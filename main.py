@@ -4,92 +4,110 @@ import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 # 1. Configurações
-URL = "https://www.nba.com/stats/players/traditional?Season=1996-97&SeasonType=Regular%20Season"
-JSON_FILENAME = "nba_stats_1996_97_players.json"
+URL = "https://www.nba.com/stats/players/traditional?Season=2024-25&SeasonType=Regular%20Season"
+JSON_FILENAME = "nba_stats_2024_25_players_filtrado.json"
 
 # Configuração do WebDriver
 service = Service(ChromeDriverManager().install())
 options = webdriver.ChromeOptions()
-# Recomendações para produção (opcional):
-# options.add_argument('--headless') # Executa em segundo plano sem abrir o navegador
+# options.add_argument('--headless') # Descomente para rodar sem abrir a interface gráfica
 # options.add_argument('--no-sandbox')
 # options.add_argument('--disable-dev-shm-usage')
 
 driver = webdriver.Chrome(service=service, options=options)
 
 print(f"Acessando o endpoint: {URL}")
+all_records_df = pd.DataFrame() 
 
 try:
     driver.get(URL)
     
-    # 2. Tratamento de Cookies
-    # Usando o ID fornecido (onetrust-accept-btn-handler)
+    # 2. Tratamento de Cookies (Usando o ID onetrust-accept-btn-handler)
     cookie_button_id = "onetrust-accept-btn-handler"
-    
     print("Tentando aceitar cookies...")
     try:
-        # Espera até 10 segundos para o botão aparecer e ser clicável
         cookie_button = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.ID, cookie_button_id))
         )
         cookie_button.click()
         print("Cookies aceitos com sucesso (clique por ID).")
-        time.sleep(1) # Pequena pausa para a interface se estabilizar
-        
-    except Exception:
-        # Se o botão de cookies não for encontrado, a página provavelmente já carregou sem ele
-        print("Botão de cookies não encontrado ou não clicável. Continuando o scraping...")
+        time.sleep(1) 
+    except TimeoutException:
+        print("Botão de cookies (onetrust-accept-btn-handler) não encontrado/clicável. Continuando...")
     
     
-    # 3. Esperar o carregamento da tabela principal
-    # Seletor CSS para a tabela no site da NBA
-    table_selector = "div.nba-stat-table table"
+    # 3. Esperar o carregamento inicial da tabela e selecionar 'All' para a paginação
+    pagination_dropdown_selector = "div.Pagination_content__f2at7 select"
     
     WebDriverWait(driver, 20).until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, table_selector))
+        EC.presence_of_element_located((By.CSS_SELECTOR, pagination_dropdown_selector))
     )
     
-    print("Tabela de dados encontrada.")
+    print("Dropdown de paginação encontrado. Tentando selecionar 'All'...")
+    
+    try:
+        select_element = driver.find_element(By.CSS_SELECTOR, pagination_dropdown_selector)
+        select = Select(select_element)
+        select.select_by_value("-1") # O valor para 'All' é -1
+        print("Opção 'All' selecionada. Aguardando o carregamento de todos os registros...")
+        
+        # Espera que a tabela seja totalmente recarregada após selecionar 'All'.
+        time.sleep(5) 
 
-    # 4. Extrair o HTML e converter para Pandas DataFrame
+    except Exception as e:
+        print(f"Erro ao interagir com o dropdown: {e}. Prosseguindo com a primeira página.")
+
+
+    # 4. Extrair a Tabela com Pandas
+    table_css_selector = "table.Crom_table__p1iZz" 
+
+    table_element = WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, table_css_selector))
+    )
     
-    # Obtém o HTML da página renderizado pelo Selenium
-    html_content = driver.page_source
-    
-    # pd.read_html() extrai todas as tabelas HTML em uma lista de DataFrames
+    html_content = table_element.get_attribute('outerHTML')
     tables = pd.read_html(html_content)
     
     if tables:
-        # A tabela de jogadores geralmente é a primeira (índice 0)
         df = tables[0] 
-        print(f"Dados extraídos com sucesso para um DataFrame Pandas com {len(df)} linhas.")
+        all_records_df = pd.concat([all_records_df, df], ignore_index=True)
         
-        # Opcional: Renomear a coluna de rank (que o Pandas frequentemente chama de 'Unnamed: 0')
-        if 'Unnamed: 0' in df.columns:
-            df = df.rename(columns={'Unnamed: 0': 'RANK'})
+        print(f"Dados brutos extraídos. Total de linhas: {len(all_records_df)}")
         
-        # Opcional: Remover linhas nulas, se houver
-        df = df.dropna(how='all')
+        # 5. Limpeza, Filtragem e Exportação
 
-        # 5. Exportar para JSON
+        # 5.1. Renomear e limpar colunas de Rank (se existir) - responsáveis por ordenação visual
+        if 'Unnamed: 0' in all_records_df.columns:
+            all_records_df = all_records_df.rename(columns={'Unnamed: 0': 'RANK'})
         
-        # Converte o DataFrame para uma lista de dicionários (orient='records')
-        data_json = df.to_json(orient='records', indent=4)
+        # 5.2. FILTRAGEM CRUCIAL: Remove todas as colunas que terminam com 'RANK'
+        cols_to_keep = [col for col in all_records_df.columns 
+                        if not str(col).strip().endswith(' RANK')]
+        
+        # Seleciona apenas as colunas que queremos manter
+        df_final = all_records_df[cols_to_keep]
+
+        # 5.3. Remover linhas nulas, se houver
+        df_final = df_final.dropna(how='all')
+
+        # 5.4. Converte o DataFrame final para JSON
+        data_json = df_final.to_json(orient='records', indent=4)
         
         with open(JSON_FILENAME, 'w', encoding='utf-8') as f:
             f.write(data_json)
         
         print(f"\n--- SUCESSO ---")
         print(f"Dados exportados para o arquivo: {JSON_FILENAME}")
-        print(f"Total de registros exportados: {len(df)}")
+        print(f"Total de registros exportados (após limpeza): {len(df_final)}")
         
     else:
-        print("Nenhuma tabela HTML encontrada na página.")
+        print("Nenhuma tabela HTML encontrada na página após o carregamento.")
 
 except Exception as e:
     print(f"\n--- ERRO CRÍTICO DURANTE O SCRAPING ---")
