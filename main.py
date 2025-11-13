@@ -59,10 +59,10 @@ def setup_driver():
 def scraper_nba_stats(driver):
     """
     Método 1: Scraper NBA Stats (com seleção 'All' e remoção de colunas RANK).
-    Endpoint: https://www.nba.com/stats/players/traditional?Season=1996-97&SeasonType=Regular%20Season
+    Endpoint: https://www.nba.com/stats/players/traditional?Season=2025-26&SeasonType=Regular%20Season
     """
-    URL = "https://www.nba.com/stats/players/traditional?Season=1996-97&SeasonType=Regular%20Season"
-    JSON_FILENAME = "nba_stats_1996_97_players_filtrado.json"
+    URL = "https://www.nba.com/stats/players/traditional?Season=2025-26&SeasonType=Regular%20Season"
+    JSON_FILENAME = "nba_stats_2025_26_players_filtrado.json"
     all_records_df = pd.DataFrame()
 
     print("=" * 50)
@@ -337,11 +337,13 @@ def scraper_basketball_reference_schedule(driver):
         if not all_games_df.empty:
             df_final = all_games_df.copy() # Evita SettingWithCopyWarning
 
+            df_final = df_final.drop(columns=['Unnamed: 6'])
+
             # Renomear colunas PTS de forma mais robusta
             pts_cols = [col for col in df_final.columns if 'PTS' in col]
             if len(pts_cols) >= 2:
                  # Assume que a primeira coluna PTS é do visitante e a segunda do mandante
-                 new_names = {'PTS': 'Visitor PTS', 'PTS.1': 'Home PTS'}
+                 new_names = {'PTS': 'Visitor PTS', 'PTS.1': 'Home PTS', 'Unnamed: 7': 'Overtime'}
                  # Ou, se os nomes forem diferentes (ex: Unnamed: 3, PTS)
                  if 'Unnamed: 3' in df_final.columns and 'PTS' in df_final.columns and 'PTS.1' not in df_final.columns:
                       new_names = {'Unnamed: 3': 'Visitor PTS', 'PTS': 'Home PTS'}
