@@ -6,14 +6,12 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
-# from webdriver_manager.chrome import ChromeDriverManager # REMOVIDO
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
-# from io import StringIO # REMOVIDO - StringIO não é necessário para read_html com string
 import re # Importado para usar regex na extração da temporada
 
 # --- CONFIGURAÇÕES GLOBAIS ---
 # Usamos o Service() vazio para que o Selenium Manager (nativo) cuide do driver
-SERVICE = Service() # MODIFICADO - Removemos o ChromeDriverManager
+SERVICE = Service() 
 OPTIONS = webdriver.ChromeOptions()
 # Verifica se estamos no Linux Mint para definir o caminho do Chromium
 # (Pode ser necessário ajustar se o caminho for diferente em outras distros)
@@ -25,10 +23,6 @@ except FileNotFoundError:
      # Se não for Mint ou o arquivo não existir, Selenium tentará encontrar o Chrome/Chromium padrão
      print("Não foi possível detectar o Mint ou encontrar /etc/os-release. Usando navegador padrão.")
      pass
-
-# OPTIONS.add_argument('--headless') # Descomente para rodar sem abrir a interface
-# OPTIONS.add_argument('--no-sandbox')
-# OPTIONS.add_argument('--disable-dev-shm-usage')
 
 def setup_driver():
     """Inicializa e retorna o WebDriver."""
@@ -43,10 +37,6 @@ def setup_driver():
         print("Tentando inicializar sem especificar o caminho do binário...")
         try:
             options_fallback = webdriver.ChromeOptions()
-            # Copia outros argumentos se houver
-            # options_fallback.add_argument('--headless')
-            # options_fallback.add_argument('--no-sandbox')
-            # options_fallback.add_argument('--disable-dev-shm-usage')
             driver = webdriver.Chrome(service=Service(), options=options_fallback)
             print("WebDriver inicializado com sucesso (sem caminho específico).")
             return driver
@@ -58,7 +48,7 @@ def setup_driver():
 
 def scraper_nba_stats(driver):
     """
-    Método 1: Scraper NBA Stats (com seleção 'All' e remoção de colunas RANK).
+    Método 1: Scraper NBA Stats
     Endpoint: https://www.nba.com/stats/players/traditional?Season=2025-26&SeasonType=Regular%20Season
     """
     URL = "https://www.nba.com/stats/players/traditional?Season=2025-26&SeasonType=Regular%20Season"
@@ -86,7 +76,6 @@ def scraper_nba_stats(driver):
         except Exception as e_cookie:
             print(f"Erro inesperado ao tratar cookies: {e_cookie}. Continuando...")
 
-
         # 3. Esperar e selecionar 'All' para a paginação
         pagination_dropdown_selector = "div.Pagination_content__f2at7 select"
 
@@ -94,19 +83,17 @@ def scraper_nba_stats(driver):
             WebDriverWait(driver, 20).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, pagination_dropdown_selector))
             )
-
             print("Dropdown de paginação encontrado. Tentando selecionar 'All'...")
-
-            # Abordagem robusta para selecionar 'All'
+            
             retries = 3
             selected = False
             while retries > 0 and not selected:
                 try:
                     select_element = driver.find_element(By.CSS_SELECTOR, pagination_dropdown_selector)
                     select = Select(select_element)
-                    select.select_by_value("-1") # Valor para 'All'
+                    select.select_by_value("-1") 
                     print("Opção 'All' selecionada. Aguardando o carregamento de todos os registros...")
-                    time.sleep(7) # Aumentar a espera após selecionar 'All'
+                    time.sleep(7) 
                     selected = True
                 except (NoSuchElementException, StaleElementReferenceException) as e_select:
                     print(f"Tentativa {4-retries}: Erro ao encontrar/selecionar o dropdown ({e_select}). Tentando novamente...")
@@ -131,16 +118,15 @@ def scraper_nba_stats(driver):
                 EC.presence_of_element_located((By.CSS_SELECTOR, table_css_selector))
             )
 
-            # Usar JavaScript para garantir que a tabela esteja visível (ajuda em alguns casos)
+            # Usar JavaScript para garantir que a tabela esteja visível
             driver.execute_script("arguments[0].scrollIntoView(true);", table_element)
-            time.sleep(1) # Pequena pausa após scroll
+            time.sleep(1)
 
             html_content = table_element.get_attribute('outerHTML')
-            tables = pd.read_html(html_content) # REMOVIDO StringIO
+            tables = pd.read_html(html_content)
 
             if tables:
                 df = tables[0]
-                # Verifica se o DataFrame não está vazio antes de concatenar
                 if not df.empty:
                     all_records_df = pd.concat([all_records_df, df], ignore_index=True)
                     print(f"Dados brutos extraídos. Total de linhas: {len(all_records_df)}")
@@ -197,7 +183,7 @@ def scraper_nba_stats(driver):
 
 def scraper_basketball_reference_schedule(driver):
     """
-    Método 2: Scraper Basketball-Reference Schedule (com iteração por meses).
+    Método 2: Scraper Basketball-Reference Schedule
     Endpoint: https://www.basketball-reference.com/leagues/NBA_2026_games-october.html
     """
     BASE_URL = "https://www.basketball-reference.com"
@@ -222,7 +208,7 @@ def scraper_basketball_reference_schedule(driver):
             print("Filtros de mês não encontrados. Verifique a URL ou a estrutura da página.")
             return # Sai da função se não encontrar os filtros
 
-        # Encontrar todos os links de meses
+        # Procurar todos os links de meses
         month_links = driver.find_elements(By.CSS_SELECTOR, f"{filter_div_selector} a")
 
         # Criar uma lista de URLs a visitar, incluindo o mês atual (se for um link válido)
@@ -230,7 +216,6 @@ def scraper_basketball_reference_schedule(driver):
         try: # Adiciona tratamento de erro caso o span não exista
             current_month_link = driver.find_element(By.CSS_SELECTOR, f"{filter_div_selector} div > span") # Mês atual pode ser um span
             if current_month_link:
-                 # Tentativa de reconstruir a URL atual baseada no padrão, já que o span não tem href
                  current_path = driver.current_url.split('/')[-1]
                  if "games-" in current_path:
                      urls_to_scrape.append(driver.current_url)
@@ -239,7 +224,6 @@ def scraper_basketball_reference_schedule(driver):
              current_path = driver.current_url.split('/')[-1]
              if "games-" in current_path and driver.current_url not in urls_to_scrape:
                  urls_to_scrape.append(driver.current_url)
-
 
         for link in month_links:
             href = link.get_attribute("href")
@@ -250,15 +234,12 @@ def scraper_basketball_reference_schedule(driver):
         # Define a ordem correta dos meses da temporada da NBA
         month_order = ['october', 'november', 'december', 'january', 'february', 'march', 'april', 'may', 'june']
 
-        # Função para extrair o nome do mês da URL
         def get_month_from_url(url):
             try:
-                # Pega a última parte da URL após '-', remove .html e converte para minúsculas
                 return url.split('-')[-1].split('.')[0].lower()
             except:
-                return None # Retorna None se não conseguir extrair
+                return None 
 
-        # Remove duplicatas e ordena pela ordem definida
         urls_to_scrape = sorted(
             list(set(urls_to_scrape)),
             key=lambda url: month_order.index(get_month_from_url(url)) if get_month_from_url(url) in month_order else float('inf')
@@ -272,20 +253,18 @@ def scraper_basketball_reference_schedule(driver):
             month_name = get_month_from_url(url).capitalize() if get_month_from_url(url) else "Desconhecido"
             print(f"\n--> Coletando dados para o mês: {month_name}")
 
-            # Navegar para o link (se não for a página atual)
             if url != driver.current_url:
                 try:
                     driver.get(url)
-                    time.sleep(2) # Pausa curta para a página carregar
+                    time.sleep(2) 
                 except Exception as e_nav:
                      print(f"   -> Erro ao navegar para {url}: {e_nav}")
                      continue # Pula para o próximo mês se a navegação falhar
 
-
             # Esperar que a tabela seja recarregada
             table_css_selector = "table#schedule" # Usando o ID da tabela
             try:
-                WebDriverWait(driver, 15).until( # Aumentar espera
+                WebDriverWait(driver, 15).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, table_css_selector))
                 )
 
@@ -293,15 +272,13 @@ def scraper_basketball_reference_schedule(driver):
                 table_element = driver.find_element(By.CSS_SELECTOR, table_css_selector)
                 html_content = table_element.get_attribute('outerHTML')
 
-                # Extrai a tabela
-                tables = pd.read_html(html_content) # REMOVIDO StringIO
+
+                tables = pd.read_html(html_content)
 
                 if tables:
                     df_month = tables[0]
-                    # Adiciona uma coluna para identificar o mês
                     df_month['Month'] = month_name
 
-                    # Limpa cabeçalhos repetidos dentro da tabela
                     if 'Date' in df_month.columns:
                        df_month = df_month[df_month['Date'] != 'Date']
 
@@ -310,14 +287,13 @@ def scraper_basketball_reference_schedule(driver):
 
             except (TimeoutException, StaleElementReferenceException) as e_table:
                 print(f"   -> Erro ao carregar ou processar a tabela para {month_name}: {e_table}")
-                # Tenta novamente uma vez se for StaleElement
                 if isinstance(e_table, StaleElementReferenceException):
                     print("   -> Tentando novamente após StaleElementReferenceException...")
                     time.sleep(3)
                     try:
                        table_element = driver.find_element(By.CSS_SELECTOR, table_css_selector)
                        html_content = table_element.get_attribute('outerHTML')
-                       tables = pd.read_html(html_content) # REMOVIDO StringIO
+                       tables = pd.read_html(html_content)
                        if tables:
                             df_month = tables[0]
                             df_month['Month'] = month_name
@@ -335,16 +311,14 @@ def scraper_basketball_reference_schedule(driver):
 
         # 3. Limpeza e Exportação Final
         if not all_games_df.empty:
-            df_final = all_games_df.copy() # Evita SettingWithCopyWarning
+            df_final = all_games_df.copy()
 
             df_final = df_final.drop(columns=['Unnamed: 6'])
 
-            # Renomear colunas PTS de forma mais robusta
             pts_cols = [col for col in df_final.columns if 'PTS' in col]
             if len(pts_cols) >= 2:
                  # Assume que a primeira coluna PTS é do visitante e a segunda do mandante
                  new_names = {'PTS': 'Visitor PTS', 'PTS.1': 'Home PTS', 'Unnamed: 7': 'Overtime'}
-                 # Ou, se os nomes forem diferentes (ex: Unnamed: 3, PTS)
                  if 'Unnamed: 3' in df_final.columns and 'PTS' in df_final.columns and 'PTS.1' not in df_final.columns:
                       new_names = {'Unnamed: 3': 'Visitor PTS', 'PTS': 'Home PTS'}
                  df_final.rename(columns=new_names, inplace=True)
@@ -352,9 +326,7 @@ def scraper_basketball_reference_schedule(driver):
             else:
                  print("Não foi possível identificar e renomear as colunas PTS corretamente.")
 
-
-            # Converte e salva no JSON
-            data_json = df_final.to_json(orient='records', indent=4, force_ascii=False) # Adicionado force_ascii=False
+            data_json = df_final.to_json(orient='records', indent=4, force_ascii=False)
 
             with open(JSON_FILENAME, 'w', encoding='utf-8') as f:
                 f.write(data_json)
@@ -376,10 +348,10 @@ def scraper_espn_standings(driver):
     Método 3: Scraper ESPN Standings (Classificação) - Coleta todas as temporadas.
     Endpoint: https://www.espn.com.br/nba/classificacao
     """
-    START_URL = "https://www.espn.com.br/nba/classificacao" # URL base mais simples
-    JSON_FILENAME = "nba_espn_standings_all_seasons.json" # Nome do arquivo alterado
+    START_URL = "https://www.espn.com.br/nba/classificacao" 
+    JSON_FILENAME = "nba_espn_standings_all_seasons.json" 
     all_standings_df = pd.DataFrame()
-    base_espn_url = "https://www.espn.com.br" # Para construir URLs completas
+    base_espn_url = "https://www.espn.com.br" 
 
     print("\n\n" + "=" * 50)
     print("INICIANDO SCRAPER 3: ESPN NBA STANDINGS (TODAS AS TEMPORADAS)")
@@ -387,7 +359,7 @@ def scraper_espn_standings(driver):
 
     try:
         driver.get(START_URL)
-        time.sleep(3) # Espera inicial maior
+        time.sleep(3)
 
         # 1. Tratamento de Cookies (se necessário)
         cookie_button_id = "onetrust-accept-btn-handler"
@@ -405,7 +377,7 @@ def scraper_espn_standings(driver):
 
         # 2. Encontrar o dropdown de temporadas e extrair URLs
         season_urls = []
-        season_dropdown_selector = "div.dropdown select[name*='::']" # Seletor ajustado
+        season_dropdown_selector = "div.dropdown select[name*='::']"
         try:
             season_dropdown_elements = WebDriverWait(driver, 15).until(
                 EC.presence_of_all_elements_located((By.CSS_SELECTOR, season_dropdown_selector))
@@ -427,7 +399,7 @@ def scraper_espn_standings(driver):
             options = select.options
 
             # Pega a URL da temporada atual (geralmente a selecionada por padrão)
-            current_url = driver.current_url.split('?')[0].split('#')[0] # Limpa parâmetros/fragmentos
+            current_url = driver.current_url.split('?')[0].split('#')[0] 
              # Garante que a URL base não termine com '/' para evitar '//'
             if current_url.endswith('/'):
                 current_url = current_url[:-1]
@@ -440,7 +412,7 @@ def scraper_espn_standings(driver):
                 data_url = option.get_attribute('data-url')
                 if data_url and data_url.startswith('/'): # Verifica se é um caminho relativo
                      full_url = base_espn_url + data_url
-                     if full_url not in season_urls: # Evita duplicatas
+                     if full_url not in season_urls:
                         season_urls.append(full_url)
                 elif data_url and data_url.startswith('http'): # Se for URL completa
                      if data_url not in season_urls:
@@ -448,7 +420,6 @@ def scraper_espn_standings(driver):
 
 
             print(f"Encontradas {len(season_urls)} URLs de temporadas para raspar.")
-            # print(season_urls) # Descomente para depurar as URLs
 
         except (TimeoutException, NoSuchElementException) as e_dropdown:
             print(f"Dropdown de temporadas não encontrado ou erro ao processar: {e_dropdown}.")
@@ -465,7 +436,7 @@ def scraper_espn_standings(driver):
         for url in season_urls:
             try:
                 # Extrai o ano/formato da temporada da URL ou do texto do dropdown
-                season_year_str = "Atual" # Default
+                season_year_str = "Atual"
                 season_match = re.search(r'/temporada/(\d{4})', url)
                 if season_match:
                     year = int(season_match.group(1))
@@ -475,7 +446,7 @@ def scraper_espn_standings(driver):
                           # Garante que 'select' foi definido
                           if 'select' in locals() or 'select' in globals():
                               selected_option_text = select.first_selected_option.text
-                              if re.match(r'\d{4}-\d{2}', selected_option_text): # Verifica o formato 2025-26
+                              if re.match(r'\d{4}-\d{2}', selected_option_text): 
                                    season_year_str = selected_option_text
                               elif re.match(r'\d{4}', selected_option_text): # Se for só o ano final 2026
                                    year_end = int(selected_option_text)
@@ -491,12 +462,11 @@ def scraper_espn_standings(driver):
                 if url != driver.current_url:
                     print(f"    Navegando para: {url}")
                     driver.get(url)
-                    time.sleep(4) # Espera maior após carregar nova temporada
+                    time.sleep(4) 
 
                 # 4. Esperar e extrair as tabelas da temporada atual
-                # *** CORREÇÃO DO SELETOR DE DADOS ***
-                data_table_selector = "div.Table__Scroller > table.Table" # Seletor específico para tabelas de dados
-                fixed_left_table_selector = "table.Table--fixed-left" # Tabela com nomes fixos à esquerda
+                data_table_selector = "div.Table__Scroller > table.Table" 
+                fixed_left_table_selector = "table.Table--fixed-left" 
 
                 try:
                     # Espera pelas tabelas de dados (direita)
@@ -535,7 +505,7 @@ def scraper_espn_standings(driver):
                         # Pega a tabela de nomes (esquerda)
                         name_table_element = name_tables_to_process[i]
 
-                        # Extrai os nomes das equipes usando Selenium, que é mais preciso que pd.read_html para esta célula
+                        # Extrai os nomes das equipes usando Selenium
                         # O seletor "span.hide-mobile > a.AnchorLink" pega o nome completo da equipe, com base no HTML
                         team_name_elements = name_table_element.find_elements(By.CSS_SELECTOR, "span.hide-mobile > a.AnchorLink")
                         
@@ -564,10 +534,7 @@ def scraper_espn_standings(driver):
                         
                         # Remove linhas de cabeçalho residuais que possam ter apenas o nome da conferência
                         df_names = df_names[~df_names['Equipe'].astype(str).str.contains('CONFERÊNCIA|EASTERN|WESTERN', na=False, case=False, regex=True)]
-                        # --- MODIFICAÇÃO FINALIZADA ---
-
-
-                        # Extrai tabela de dados
+                
                         data_html = data_tables_to_process[i].get_attribute('outerHTML')
                         df_data = pd.read_html(data_html)[0] # REMOVIDO StringIO
 
@@ -582,7 +549,6 @@ def scraper_espn_standings(driver):
                         # Verifica se o número de linhas corresponde (após limpeza inicial)
                         if len(df_names) != len(df_data):
                             print(f"   -> Aviso: Discrepância no número de linhas entre nomes ({len(df_names)}) e dados ({len(df_data)}) para Conf. {i+1}, {season_year_str}. Tentando alinhar...")
-                             # Tenta remover linhas completamente vazias de ambos como possível correção
                             df_names_cleaned = df_names.dropna(how='all').reset_index(drop=True)
                             df_data_cleaned = df_data.dropna(how='all').reset_index(drop=True)
                             if len(df_names_cleaned) == len(df_data_cleaned):
@@ -595,14 +561,12 @@ def scraper_espn_standings(driver):
                                  print(f"Dados ({len(df_data_cleaned)}):", df_data_cleaned.head().to_string()) # Para depuração
                                  continue # Pula para a próxima conferência/temporada
 
-                        # Combina nomes e dados horizontalmente
                         # Adiciona reset_index(drop=True) para garantir alinhamento correto
                         df_combined = pd.concat([df_names.reset_index(drop=True), df_data.reset_index(drop=True)], axis=1)
 
-
                         # Adicionar colunas de Conferência e Temporada
                         df_combined['Conference'] = conference_names[i]
-                        df_combined['Season'] = season_year_str # Adiciona a temporada formatada
+                        df_combined['Season'] = season_year_str 
                         df_list_combined.append(df_combined)
 
                     except Exception as e_proc_table:
@@ -621,16 +585,14 @@ def scraper_espn_standings(driver):
 
         # 6. Limpeza e Exportação Final (após coletar todas as temporadas)
         if not all_standings_df.empty:
-            df_final = all_standings_df.dropna(subset=['Equipe'], how='all') # Remove linhas onde a Equipe é NaN
-            df_final = df_final[df_final['Equipe'] != ''] # Remove linhas com Equipe vazia
+            df_final = all_standings_df.dropna(subset=['Equipe'], how='all')
+            df_final = df_final[df_final['Equipe'] != ''] 
 
             # Reordena colunas para ter Season e Conference primeiro
             cols_order = ['Season', 'Conference', 'Equipe']
             remaining_cols = [col for col in df_final.columns if col not in cols_order]
             df_final = df_final[cols_order + remaining_cols]
 
-
-            # Converte e salva no JSON
             data_json = df_final.to_json(orient='records', indent=4, force_ascii=False) # Adicionado force_ascii=False
 
             with open(JSON_FILENAME, 'w', encoding='utf-8') as f:
@@ -650,20 +612,13 @@ def scraper_espn_standings(driver):
 
 # --- EXECUÇÃO PRINCIPAL ---
 
-# Inicializa o driver (será usado por todos os scrapers)
+# Inicializa o driver
 driver = setup_driver()
 
-if driver: # Só executa se o driver foi inicializado com sucesso
-    # Roda o primeiro scraper
+if driver:
     scraper_nba_stats(driver) 
-
-    # Roda o segundo scraper
     scraper_basketball_reference_schedule(driver) 
-
-    # Roda o terceiro scraper (ESPN - Todas as temporadas)
     scraper_espn_standings(driver)
-
-    # Fecha o navegador
     print("\nFechando o navegador...")
     driver.quit()
     print("Navegador fechado.")
